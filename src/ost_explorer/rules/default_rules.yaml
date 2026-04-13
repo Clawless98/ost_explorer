@@ -1,0 +1,441 @@
+# ost_explorer default detection rules
+# Comprehensive ruleset for pentest / forensic OST/PST mailbox analysis.
+# All regex patterns use YAML single-quoted strings to avoid YAML escape issues.
+
+# ─────────────────────────────────────────────────────────────
+# CREDENTIALS & SECRETS
+# ─────────────────────────────────────────────────────────────
+
+- name: password_plain
+  pattern: '(?:password|passwd|pwd|pass)\s*[:=]\s*\S+'
+  severity: critical
+  note: "Plain-text password assignment detected"
+
+- name: credentials_keyword
+  find_any:
+    - "credentials:"
+    - "login:"
+    - "username:"
+    - "auth_token"
+  severity: high
+  note: "Credential keyword found"
+
+- name: aws_access_key
+  pattern: 'AKIA[0-9A-Z]{16}'
+  severity: critical
+  note: "AWS Access Key ID"
+
+- name: aws_secret_key
+  pattern: '(?:aws_secret_access_key|secret_key)\s*[:=]\s*[A-Za-z0-9/+=]{40}'
+  severity: critical
+  note: "AWS Secret Access Key"
+
+- name: azure_key
+  pattern: '(?:AccountKey|azure[_-]?(?:storage|key|secret))\s*[:=]\s*[A-Za-z0-9+/=]{44,}'
+  severity: critical
+  note: "Azure storage or service key"
+
+- name: gcp_service_key
+  find_any:
+    - '"type": "service_account"'
+    - "private_key_id"
+    - "client_x509_cert_url"
+  severity: critical
+  note: "GCP service account key material"
+
+- name: github_token
+  pattern: 'gh[ps]_[A-Za-z0-9_]{36,}'
+  severity: critical
+  note: "GitHub personal access or server-to-server token"
+
+- name: gitlab_token
+  pattern: 'glpat-[A-Za-z0-9_\-]{20,}'
+  severity: critical
+  note: "GitLab personal access token"
+
+- name: slack_token
+  pattern: 'xox[baprs]-[A-Za-z0-9\-]{10,}'
+  severity: critical
+  note: "Slack API token"
+
+- name: stripe_key
+  pattern: '(?:sk|pk)_(?:live|test)_[A-Za-z0-9]{24,}'
+  severity: critical
+  note: "Stripe API key (live or test)"
+
+- name: twilio_key
+  pattern: 'SK[0-9a-fA-F]{32}'
+  severity: high
+  note: "Twilio API key SID"
+
+- name: sendgrid_key
+  pattern: 'SG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}'
+  severity: critical
+  note: "SendGrid API key"
+
+- name: mailgun_key
+  pattern: 'key-[A-Za-z0-9]{32}'
+  severity: high
+  note: "Mailgun API key"
+
+- name: jwt_token
+  pattern: 'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'
+  severity: high
+  note: "JSON Web Token (JWT)"
+
+- name: private_key_pem
+  find_any:
+    - "-----BEGIN RSA PRIVATE KEY-----"
+    - "-----BEGIN PRIVATE KEY-----"
+    - "-----BEGIN EC PRIVATE KEY-----"
+    - "-----BEGIN OPENSSH PRIVATE KEY-----"
+    - "-----BEGIN DSA PRIVATE KEY-----"
+  severity: critical
+  note: "PEM-encoded private key block"
+
+- name: pgp_private_key
+  find: "-----BEGIN PGP PRIVATE KEY BLOCK-----"
+  severity: critical
+  note: "PGP private key block"
+
+- name: ssh_private_key
+  find: "-----BEGIN OPENSSH PRIVATE KEY-----"
+  severity: critical
+  note: "OpenSSH private key block"
+
+- name: connection_string_jdbc
+  pattern: 'jdbc:[a-z]+://[^\s]+'
+  severity: high
+  note: "JDBC database connection string"
+
+- name: connection_string_mongodb
+  pattern: 'mongodb(?:\+srv)?://[^\s]+'
+  severity: high
+  note: "MongoDB connection string"
+
+- name: connection_string_redis
+  pattern: 'redis://[^\s]+'
+  severity: high
+  note: "Redis connection string"
+
+- name: connection_string_postgres
+  pattern: 'postgres(?:ql)?://[^\s]+'
+  severity: high
+  note: "PostgreSQL connection string"
+
+- name: connection_string_mysql
+  pattern: 'mysql://[^\s]+'
+  severity: high
+  note: "MySQL connection string"
+
+- name: connection_string_odbc
+  pattern: '(?:DSN|Driver)\s*=\s*[^;]+;.*(?:Uid|User)\s*=\s*[^;]+'
+  severity: high
+  note: "ODBC connection string with credentials"
+
+- name: basic_auth_url
+  pattern: 'https?://[^:]+:[^@]+@[^\s]+'
+  severity: critical
+  note: "URL containing embedded Basic Auth credentials"
+
+- name: bearer_token
+  pattern: '(?:Bearer|Authorization)\s+[A-Za-z0-9_\-.~+/]+=*'
+  severity: high
+  note: "Bearer / Authorization token"
+
+- name: oauth_token
+  pattern: '(?:access_token|refresh_token|oauth_token)\s*[:=]\s*[A-Za-z0-9_\-.]{10,}'
+  severity: high
+  note: "OAuth access or refresh token"
+
+- name: session_id
+  pattern: '(?:session_id|sessionid|PHPSESSID|JSESSIONID|ASP\.NET_SessionId)\s*[:=]\s*[A-Za-z0-9_\-]{10,}'
+  severity: medium
+  note: "Web session identifier"
+
+- name: keepass_reference
+  find_any:
+    - ".kdbx"
+    - "KeePass"
+    - "keepass"
+  severity: high
+  note: "Reference to KeePass password database"
+
+- name: lastpass_reference
+  find_any:
+    - "LastPass"
+    - "lastpass"
+  severity: medium
+  note: "Reference to LastPass password manager"
+
+- name: onepassword_reference
+  find_any:
+    - "1Password"
+    - ".1pif"
+  severity: medium
+  note: "Reference to 1Password password manager"
+
+# ─────────────────────────────────────────────────────────────
+# NETWORK & INFRASTRUCTURE
+# ─────────────────────────────────────────────────────────────
+
+- name: internal_ip_rfc1918
+  pattern: '(?:^|[\s,;(])(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(?:[\s,;):]|$)'
+  severity: medium
+  note: "RFC-1918 private IP address"
+
+- name: unc_path
+  pattern: '\\\\[A-Za-z0-9_.\-]+\\[A-Za-z0-9_.\-\$]+'
+  severity: medium
+  note: "UNC network path"
+
+- name: vpn_config
+  find_any:
+    - "vpn gateway"
+    - "vpn server"
+    - "openvpn"
+    - ".ovpn"
+    - "ipsec"
+    - "wireguard"
+  severity: high
+  note: "VPN configuration details"
+
+- name: rdp_connection
+  find_any:
+    - "mstsc"
+    - ".rdp"
+    - "remote desktop"
+    - "rdp://"
+    - "port 3389"
+  severity: medium
+  note: "Remote Desktop Protocol reference"
+
+- name: ssh_connection
+  pattern: 'ssh\s+(?:-[A-Za-z]\s+)*[A-Za-z0-9_.@\-]+(?:\s+-p\s+\d+)?'
+  severity: medium
+  note: "SSH connection command"
+
+- name: wifi_password
+  pattern: '(?:wifi|wi-fi|wireless|wlan|ssid)\s*(?:password|key|pass|psk)\s*[:=]\s*\S+'
+  severity: high
+  note: "Wi-Fi password or PSK"
+
+- name: dns_record
+  find_any:
+    - "A record"
+    - "CNAME record"
+    - "MX record"
+    - "TXT record"
+    - "NS record"
+  severity: low
+  note: "DNS record reference"
+
+- name: firewall_rule
+  find_any:
+    - "iptables"
+    - "firewall rule"
+    - "ufw allow"
+    - "netsh advfirewall"
+    - "security group"
+  severity: medium
+  note: "Firewall or security group rule"
+
+# ─────────────────────────────────────────────────────────────
+# PII & COMPLIANCE
+# ─────────────────────────────────────────────────────────────
+
+- name: ssn
+  pattern: '\b\d{3}-\d{2}-\d{4}\b'
+  severity: critical
+  note: "US Social Security Number"
+
+- name: credit_card_visa
+  pattern: '\b4\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
+  severity: critical
+  note: "Visa credit card number"
+
+- name: credit_card_mastercard
+  pattern: '\b5[1-5]\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
+  severity: critical
+  note: "Mastercard credit card number"
+
+- name: credit_card_amex
+  pattern: '\b3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5}\b'
+  severity: critical
+  note: "American Express credit card number"
+
+- name: bank_routing
+  pattern: '(?:routing|aba|transit)\s*(?:number|#|no\.?)\s*[:=]?\s*\d{9}'
+  severity: critical
+  note: "Bank routing / ABA number"
+
+- name: bank_account
+  pattern: '(?:account|acct)\s*(?:number|#|no\.?)\s*[:=]?\s*\d{8,17}'
+  severity: critical
+  note: "Bank account number"
+
+- name: passport_us
+  pattern: '(?:passport)\s*(?:number|#|no\.?)\s*[:=]?\s*[A-Z]?\d{8,9}'
+  severity: critical
+  note: "US passport number"
+
+- name: drivers_license
+  pattern: "(?:driver'?s?\\s*(?:license|licence|lic))\\s*(?:number|#|no\\.?)\\s*[:=]?\\s*[A-Z0-9]{5,15}"
+  severity: high
+  note: "Driver's license number"
+
+- name: phone_us
+  pattern: '(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}'
+  severity: low
+  note: "US phone number"
+
+- name: phone_international
+  pattern: '\+\d{1,3}[\s.-]?\d{4,14}'
+  severity: low
+  note: "International phone number"
+
+- name: dob_pattern
+  pattern: '(?:date\s*of\s*birth|DOB|born|birthday)\s*[:=]?\s*\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}'
+  severity: high
+  note: "Date of birth"
+
+# ─────────────────────────────────────────────────────────────
+# SENSITIVE FILE TYPES
+# ─────────────────────────────────────────────────────────────
+
+- name: private_key_file
+  find_any:
+    - ".pem"
+    - ".key"
+    - ".ppk"
+    - ".pfx"
+    - ".p12"
+  severity: high
+  note: "Reference to private key or certificate file"
+
+- name: password_database_file
+  find_any:
+    - ".kdbx"
+    - ".kdb"
+    - ".1pif"
+    - ".agilekeychain"
+  severity: critical
+  note: "Password database file"
+
+- name: config_file
+  find_any:
+    - ".env"
+    - ".htpasswd"
+    - "wp-config.php"
+    - "web.config"
+    - "appsettings.json"
+  severity: high
+  note: "Sensitive configuration file reference"
+
+- name: script_file
+  find_any:
+    - ".ps1"
+    - ".bat"
+    - ".cmd"
+    - ".sh"
+    - ".bash"
+  severity: medium
+  note: "Script file reference"
+
+- name: macro_document
+  find_any:
+    - ".xlsm"
+    - ".docm"
+    - ".pptm"
+  severity: medium
+  note: "Office document with macros"
+
+- name: archive_file
+  find_any:
+    - ".zip"
+    - ".7z"
+    - ".rar"
+    - ".tar.gz"
+    - ".tgz"
+  severity: low
+  note: "Archive file reference"
+
+- name: certificate_file
+  find_any:
+    - ".crt"
+    - ".cer"
+    - ".der"
+  severity: medium
+  note: "Certificate file reference"
+
+- name: database_dump
+  find_any:
+    - ".sql"
+    - ".bak"
+    - ".dump"
+    - ".sqlite"
+    - ".mdb"
+  severity: high
+  note: "Database dump or backup file"
+
+# ─────────────────────────────────────────────────────────────
+# CONTEXTUAL PATTERNS
+# ─────────────────────────────────────────────────────────────
+
+- name: confidential_marking
+  find_any:
+    - "do not share"
+    - "do not distribute"
+    - "confidential"
+    - "internal only"
+    - "eyes only"
+    - "restricted"
+    - "proprietary"
+    - "not for external"
+  severity: medium
+  note: "Document or message marked as confidential / restricted"
+
+- name: credential_issuance
+  find_any:
+    - "temporary password"
+    - "temp password"
+    - "one-time code"
+    - "reset link"
+    - "your new password"
+    - "initial password"
+    - "default password"
+  severity: high
+  note: "Credential issuance or reset message"
+
+- name: credential_exchange
+  find_any:
+    - "here are the credentials"
+    - "here are the creds"
+    - "here is the password"
+    - "as requested, the password"
+    - "login details below"
+    - "access details"
+    - "attached are the credentials"
+  severity: high
+  note: "Credential exchange in message body"
+
+- name: wire_transfer
+  find_any:
+    - "wire transfer"
+    - "wire instructions"
+    - "bank details"
+    - "routing number"
+    - "swift code"
+    - "IBAN"
+  severity: high
+  note: "Wire transfer or banking instruction"
+
+- name: sensitive_attachment_context
+  find_any:
+    - "see attached password"
+    - "attached is the key"
+    - "attached config"
+    - "attached credentials"
+    - "find attached the"
+  severity: high
+  note: "Sensitive content referenced in attachment context"

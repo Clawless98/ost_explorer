@@ -1,0 +1,21 @@
+# Example Custom Rules for ost_explorer
+# Copy this file and modify it for your engagement.
+# Load with: ost_explorer scan mailbox.pst --rules my_rules.yaml
+
+- name: client project name
+  find: "Project Nightfall"
+  severity: high
+  note: "Client's confidential project codename"
+
+- name: internal tools
+  find_any:
+    - "admin portal"
+    - "internal dashboard"
+    - "staging environment"
+  severity: medium
+  note: "References to internal tools and environments"
+
+- name: employee id
+  pattern: "EMP-\\d{6}"
+  severity: low
+  note: "Employee ID format"
