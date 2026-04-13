@@ -15,6 +15,32 @@ try:
 except ImportError:
     HAS_PYPFF = False
 
+
+def _safe_attr(obj: Any, *names: str, default: Any = None) -> Any:
+    """Try multiple attribute names to handle different pypff API versions.
+
+    Some builds expose get_X() methods, others expose X as properties.
+    """
+    for name in names:
+        # Try as method first (get_X style)
+        getter = f"get_{name}"
+        if hasattr(obj, getter):
+            try:
+                val = getattr(obj, getter)()
+                return val
+            except Exception:
+                pass
+        # Try as property/attribute
+        if hasattr(obj, name):
+            try:
+                val = getattr(obj, name)
+                if callable(val):
+                    return val()
+                return val
+            except Exception:
+                pass
+    return default
+
 class PypffParser(MailboxParser):
     def __init__(self) -> None:
         if not HAS_PYPFF:
@@ -78,37 +104,71 @@ class PypffParser(MailboxParser):
 
     def _convert_message(self, pff_msg: Any) -> Message:
         attachments: list[Attachment] = []
-        for j in range(pff_msg.get_number_of_attachments()):
+        num_att = 0
+        try:
+            num_att = _safe_attr(pff_msg, "number_of_attachments", default=0) or 0
+        except Exception:
+            pass
+        for j in range(num_att):
             try:
                 pff_att = pff_msg.get_attachment(j)
                 att_ref = pff_att
+                att_name = _safe_attr(pff_att, "name", default=None) or f"attachment_{j}"
+                att_size = _safe_attr(pff_att, "size", default=0) or 0
+                att_mime = _safe_attr(pff_att, "content_type", default=None) or "application/octet-stream"
                 attachments.append(Attachment(
-                    filename=pff_att.get_name() or f"attachment_{j}",
-                    size=pff_att.get_size(),
-                    mime_type=pff_att.get_content_type() or "application/octet-stream",
-                    _extract_fn=lambda a=att_ref: a.read_buffer(a.get_size()),
+                    filename=att_name,
+                    size=att_size,
+                    mime_type=att_mime,
+                    _extract_fn=lambda a=att_ref: self._read_attachment(a),
                 ))
             except Exception as e:
                 logger.warning("Failed to parse attachment %d: %s", j, e)
-        msg_date = None
-        try:
-            msg_date = pff_msg.get_delivery_time()
-        except Exception:
-            msg_date = datetime.datetime(1970, 1, 1)
+
+        msg_date = _safe_attr(pff_msg, "delivery_time", "creation_time", "modification_time",
+                              default=datetime.datetime(1970, 1, 1))
+
+        # Get body — pypff may return bytes or str depending on version
+        body_plain = _safe_attr(pff_msg, "plain_text_body", default="") or ""
+        body_html = _safe_attr(pff_msg, "html_body", default="") or ""
+        if isinstance(body_plain, bytes):
+            body_plain = body_plain.decode("utf-8", errors="replace")
+        if isinstance(body_html, bytes):
+            body_html = body_html.decode("utf-8", errors="replace")
+
         return Message(
-            subject=pff_msg.get_subject() or "(no subject)",
-            sender=pff_msg.get_sender_name() or "",
-            recipients_to=self._safe_split(pff_msg.get_display_to()),
-            recipients_cc=self._safe_split(pff_msg.get_display_cc()),
-            recipients_bcc=self._safe_split(pff_msg.get_display_bcc()),
+            subject=_safe_attr(pff_msg, "subject", default="(no subject)") or "(no subject)",
+            sender=_safe_attr(pff_msg, "sender_name", default="") or "",
+            recipients_to=self._safe_split(_safe_attr(pff_msg, "display_to", default="")),
+            recipients_cc=self._safe_split(_safe_attr(pff_msg, "display_cc", default="")),
+            recipients_bcc=self._safe_split(_safe_attr(pff_msg, "display_bcc", default="")),
             date=msg_date or datetime.datetime(1970, 1, 1),
-            body_plain=pff_msg.get_plain_text_body() or "",
-            body_html=pff_msg.get_html_body() or "",
-            headers=self._parse_headers(pff_msg.get_transport_headers()),
+            body_plain=body_plain,
+            body_html=body_html,
+            headers=self._parse_headers(_safe_attr(pff_msg, "transport_headers", default="")),
             attachments=attachments,
             is_read=True,
             is_flagged=False,
         )
+
+    @staticmethod
+    def _read_attachment(att: Any) -> bytes:
+        """Read attachment bytes, handling different pypff API versions."""
+        # Try read_buffer(size) first
+        if hasattr(att, "read_buffer"):
+            size = _safe_attr(att, "size", default=0) or 0
+            if size > 0:
+                try:
+                    return att.read_buffer(size)
+                except Exception:
+                    pass
+        # Try read()
+        if hasattr(att, "read"):
+            try:
+                return att.read()
+            except Exception:
+                pass
+        return b""
 
     def _safe_split(self, value: Optional[str]) -> list[str]:
         if not value:
@@ -158,8 +218,8 @@ class PypffParser(MailboxParser):
             try:
                 item = contacts_folder.get_sub_message(i)
                 contacts.append(Contact(
-                    display_name=item.get_subject() or "",
-                    email_addresses=[item.get_sender_name() or ""],
+                    display_name=_safe_attr(item, "subject", default="") or "",
+                    email_addresses=[_safe_attr(item, "sender_name", default="") or ""],
                     phone_numbers=[], organization="", title="",
                 ))
             except Exception as e:
