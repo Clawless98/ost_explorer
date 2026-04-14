@@ -56,10 +56,17 @@ def info(ctx: click.Context, file: Path) -> None:
 @click.option("--only-custom", is_flag=True, help="Use only custom rules, skip built-in defaults")
 @click.option("--scan-attachments/--no-scan-attachments", default=True,
               help="Scan content of text/office/zip attachments (default: on)")
+@click.option("--dedupe/--no-dedupe", default=True,
+              help="Collapse duplicate hits (same rule + matched text). Default: on")
+@click.option("--full-context", is_flag=True,
+              help="Include entire message body in context instead of a window")
+@click.option("--context-chars", type=int, default=2000,
+              help="Chars of context around each match (default: 2000)")
 @click.pass_context
 def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path | None,
          fmt: str, severity: str, folder: str | None, include_deleted: bool, no_cache: bool,
-         only_custom: bool, scan_attachments: bool) -> None:
+         only_custom: bool, scan_attachments: bool, dedupe: bool,
+         full_context: bool, context_chars: int) -> None:
     """Scan a PST/OST file for credentials, secrets, and sensitive data."""
     from ost_explorer.engine.scanner import Scanner
     from ost_explorer.engine.export import export_json, export_csv
@@ -74,6 +81,8 @@ def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path |
         custom_rule_paths=list(rules) if rules else None,
         use_defaults=not only_custom,
         scan_attachments=scan_attachments,
+        context_chars=context_chars,
+        full_context=full_context,
     )
     mailbox, parser = open_mailbox(file)
     all_findings = []
@@ -89,7 +98,11 @@ def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path |
                 messages = parser.get_messages(f, offset=offset, limit=50)
                 if not messages:
                     break
-                all_findings.extend(scanner.scan_messages(messages, folder_path=f.name, min_severity=min_severity))
+                # Don't dedupe per-batch — we'll dedupe globally at the end
+                all_findings.extend(scanner.scan_messages(
+                    messages, folder_path=f.name,
+                    min_severity=min_severity, dedupe=False,
+                ))
                 offset += 50
             _scan_folders(f.children)
     _scan_folders(mailbox.folders)
@@ -98,8 +111,15 @@ def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path |
             click.echo("Scanning recovered/deleted items...")
         recovered = parser.get_recovered_messages()
         if recovered:
-            all_findings.extend(scanner.scan_messages(recovered, folder_path="Recovered", min_severity=min_severity))
+            all_findings.extend(scanner.scan_messages(
+                recovered, folder_path="Recovered",
+                min_severity=min_severity, dedupe=False,
+            ))
     parser.close()
+    # Global dedupe across all folders
+    if dedupe:
+        from ost_explorer.engine.scanner import dedupe_findings
+        all_findings = dedupe_findings(all_findings)
     if output and fmt == "json":
         export_json([], all_findings, output)
         click.echo(f"Findings exported to {output}")
@@ -108,9 +128,16 @@ def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path |
         click.echo(f"Findings exported to {output}")
     else:
         for f in all_findings:
+            click.echo("=" * 78)
             click.echo(f"[{f.severity.name}] {f.rule_name}: {f.matched_text}")
-            click.echo(f"  Message: {f.message_subject} (from: {f.message_sender}, {f.message_date})")
+            click.echo(f"  Message: {f.message_subject}")
+            click.echo(f"  From:    {f.message_sender}")
+            click.echo(f"  Date:    {f.message_date}")
             click.echo(f"  Folder:  {f.folder_path}")
+            if f.context:
+                click.echo(f"  Context:")
+                for line in f.context.splitlines():
+                    click.echo(f"    {line}")
             click.echo()
     click.echo(f"\nTotal findings: {len(all_findings)}")
     sys.exit(1 if all_findings else 0)
