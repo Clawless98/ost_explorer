@@ -16,17 +16,17 @@
 # --- Credential disclosure language ---
 
 - name: password_colon
-  pattern: '(?i)\bpassword\s*[:=]\s*\S+'
+  pattern: '(?i)(?:^|[^A-Za-z])password\s*[:=]\s*\S+'
   severity: critical
-  note: "password: VALUE"
+  note: "password: VALUE (also catches DB_PASSWORD=, USER_PASSWORD=, etc.)"
 
 - name: pass_colon
-  pattern: '(?i)\bpass\s*[:=]\s*\S{4,}'
+  pattern: '(?i)(?:^|[^A-Za-z])pass\s*[:=]\s*\S{4,}'
   severity: critical
   note: "pass: VALUE (4+ chars)"
 
 - name: pwd_colon
-  pattern: '(?i)\bpwd\s*[:=]\s*\S+'
+  pattern: '(?i)(?:^|[^A-Za-z])pwd\s*[:=]\s*\S+'
   severity: critical
   note: "pwd: VALUE"
 

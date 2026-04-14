@@ -54,10 +54,12 @@ def info(ctx: click.Context, file: Path) -> None:
 @click.option("--include-deleted/--no-deleted", default=True, help="Include recovered/deleted items")
 @click.option("--no-cache", is_flag=True, help="Skip SQLite cache")
 @click.option("--only-custom", is_flag=True, help="Use only custom rules, skip built-in defaults")
+@click.option("--scan-attachments/--no-scan-attachments", default=True,
+              help="Scan content of text/office/zip attachments (default: on)")
 @click.pass_context
 def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path | None,
          fmt: str, severity: str, folder: str | None, include_deleted: bool, no_cache: bool,
-         only_custom: bool) -> None:
+         only_custom: bool, scan_attachments: bool) -> None:
     """Scan a PST/OST file for credentials, secrets, and sensitive data."""
     from ost_explorer.engine.scanner import Scanner
     from ost_explorer.engine.export import export_json, export_csv
@@ -71,6 +73,7 @@ def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path |
     scanner = Scanner(
         custom_rule_paths=list(rules) if rules else None,
         use_defaults=not only_custom,
+        scan_attachments=scan_attachments,
     )
     mailbox, parser = open_mailbox(file)
     all_findings = []

@@ -15,8 +15,10 @@ _CONTEXT_LINES = 2
 
 class Scanner:
     def __init__(self, custom_rule_paths: list[Path] | None = None,
-                 use_defaults: bool = True) -> None:
+                 use_defaults: bool = True,
+                 scan_attachments: bool = True) -> None:
         self._rules: list[Rule] = []
+        self._scan_attachments = scan_attachments
         if use_defaults:
             self._load_default_rules()
         if custom_rule_paths:
@@ -35,7 +37,22 @@ class Scanner:
         findings.extend(self._scan_text(text, message, folder_path, min_severity))
         findings.extend(self._scan_text(message.subject, message, folder_path, min_severity))
         for att in message.attachments:
+            # Scan the filename itself
             findings.extend(self._scan_text(att.filename, message, folder_path, min_severity))
+            # Scan the attachment content (text files, office docs, zips)
+            if self._scan_attachments:
+                try:
+                    from ost_explorer.engine.attachment_content import extract_text
+                    content = extract_text(att)
+                    if content:
+                        att_findings = self._scan_text(content, message, folder_path, min_severity)
+                        # Prepend attachment filename to the context so findings
+                        # are traceable to the specific attachment
+                        for f in att_findings:
+                            f.folder_path = f"{folder_path} → {att.filename}"
+                        findings.extend(att_findings)
+                except Exception as e:
+                    logger.warning("Failed to scan attachment %s: %s", att.filename, e)
         return findings
 
     def scan_messages(self, messages: list[Message], folder_path: str,
