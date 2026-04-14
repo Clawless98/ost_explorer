@@ -169,6 +169,7 @@ class PypffParser(MailboxParser):
             attachments=attachments,
             is_read=True,
             is_flagged=False,
+            message_class=_safe_attr(pff_msg, "message_class", default="") or "",
         )
 
     @staticmethod

@@ -41,6 +41,7 @@ class Message:
     attachments: list[Attachment]
     is_read: bool
     is_flagged: bool
+    message_class: str = ""  # e.g., IPM.Note, IPM.Appointment, IPM.Schedule.Meeting.Request
 
     @property
     def has_attachments(self) -> bool:

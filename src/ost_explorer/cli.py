@@ -54,8 +54,10 @@ def info(ctx: click.Context, file: Path) -> None:
 @click.option("--include-deleted/--no-deleted", default=True, help="Include recovered/deleted items")
 @click.option("--no-cache", is_flag=True, help="Skip SQLite cache")
 @click.option("--only-custom", is_flag=True, help="Use only custom rules, skip built-in defaults")
-@click.option("--scan-attachments/--no-scan-attachments", default=True,
-              help="Scan content of text/office/zip attachments (default: on)")
+@click.option("--scan-attachments/--no-scan-attachments", default=False,
+              help="Scan content of text/office/zip/pdf/msg attachments (default: off; enable when triaging attached docs)")
+@click.option("--include-meetings", is_flag=True,
+              help="Include calendar/meeting items (normally skipped — they spam Teams/Zoom meeting passwords)")
 @click.option("--dedupe/--no-dedupe", default=True,
               help="Collapse duplicate hits (same rule + matched text). Default: on")
 @click.option("--full-context", is_flag=True,
@@ -65,8 +67,8 @@ def info(ctx: click.Context, file: Path) -> None:
 @click.pass_context
 def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path | None,
          fmt: str, severity: str, folder: str | None, include_deleted: bool, no_cache: bool,
-         only_custom: bool, scan_attachments: bool, dedupe: bool,
-         full_context: bool, context_chars: int) -> None:
+         only_custom: bool, scan_attachments: bool, include_meetings: bool,
+         dedupe: bool, full_context: bool, context_chars: int) -> None:
     """Scan a PST/OST file for credentials, secrets, and sensitive data."""
     from ost_explorer.engine.scanner import Scanner
     from ost_explorer.engine.export import export_json, export_csv
@@ -83,6 +85,7 @@ def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path |
         scan_attachments=scan_attachments,
         context_chars=context_chars,
         full_context=full_context,
+        include_meetings=include_meetings,
     )
     mailbox, parser = open_mailbox(file)
     all_findings = []
@@ -127,8 +130,10 @@ def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path |
         export_csv([], all_findings, output)
         click.echo(f"Findings exported to {output}")
     else:
+        import re as _re
+        _blank_collapse = _re.compile(r"\n\s*\n+")
         for f in all_findings:
-            click.echo("=" * 78)
+            click.echo("-" * 78)
             click.echo(f"[{f.severity.name}] {f.rule_name}: {f.matched_text}")
             click.echo(f"  Subject: {f.message_subject}")
             click.echo(f"  From:    {f.message_sender}")
@@ -139,10 +144,13 @@ def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path |
             click.echo(f"  Date:    {f.message_date}")
             click.echo(f"  Folder:  {f.folder_path}")
             if f.context:
+                # Collapse runs of blank lines, trim each line, drop empties
+                ctx = _blank_collapse.sub("\n", f.context.strip())
                 click.echo(f"  Context:")
-                for line in f.context.splitlines():
-                    click.echo(f"    {line}")
-            click.echo()
+                for line in ctx.splitlines():
+                    stripped = line.strip()
+                    if stripped:
+                        click.echo(f"    {stripped}")
     click.echo(f"\nTotal findings: {len(all_findings)}")
     sys.exit(1 if all_findings else 0)
 

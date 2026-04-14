@@ -18,13 +18,15 @@ _CONTEXT_CHARS = 2000
 class Scanner:
     def __init__(self, custom_rule_paths: list[Path] | None = None,
                  use_defaults: bool = True,
-                 scan_attachments: bool = True,
+                 scan_attachments: bool = False,
                  context_chars: int = _CONTEXT_CHARS,
-                 full_context: bool = False) -> None:
+                 full_context: bool = False,
+                 include_meetings: bool = False) -> None:
         self._rules: list[Rule] = []
         self._scan_attachments = scan_attachments
         self._context_chars = context_chars
         self._full_context = full_context
+        self._include_meetings = include_meetings
         if use_defaults:
             self._load_default_rules()
         if custom_rule_paths:
@@ -39,6 +41,13 @@ class Scanner:
     def scan_message(self, message: Message, folder_path: str,
                      min_severity: Severity = Severity.LOW) -> list[ScanFinding]:
         from ost_explorer.engine.body_extractor import strip_html
+        # Skip meeting/calendar items unless explicitly included — they
+        # consistently carry Teams/Zoom/Webex meeting-password tokens that
+        # are irrelevant for lateral movement and drown out real findings.
+        if not self._include_meetings:
+            mc = (message.message_class or "").upper()
+            if mc.startswith("IPM.APPOINTMENT") or mc.startswith("IPM.SCHEDULE"):
+                return []
         findings: list[ScanFinding] = []
         # Scan plain text body
         findings.extend(self._scan_text(message.body_plain or "", message, folder_path, min_severity))
