@@ -42,25 +42,34 @@ def _safe_attr(obj: Any, *names: str, default: Any = None) -> Any:
     """Try multiple attribute names to handle different pypff API versions.
 
     Some builds expose get_X() methods, others expose X as properties.
+    Properties can raise non-AttributeError exceptions (e.g. IOError) when
+    the underlying MAPI value is missing — those must be suppressed here so
+    the whole message parse doesn't fail on an optional field.
     """
     for name in names:
         # Try as method first (get_X style)
         getter = f"get_{name}"
-        if hasattr(obj, getter):
+        try:
+            method = getattr(obj, getter)
+        except Exception:
+            method = None
+        if callable(method):
             try:
-                val = getattr(obj, getter)()
-                return val
+                return method()
             except Exception:
                 pass
-        # Try as property/attribute
-        if hasattr(obj, name):
-            try:
-                val = getattr(obj, name)
-                if callable(val):
+        # Try as property/attribute (catch all exceptions, not just AttributeError,
+        # since pypff properties raise IOError when the MAPI value is missing)
+        try:
+            val = getattr(obj, name)
+            if callable(val):
+                try:
                     return val()
-                return val
-            except Exception:
-                pass
+                except Exception:
+                    continue
+            return val
+        except Exception:
+            continue
     return default
 
 class PypffParser(MailboxParser):
