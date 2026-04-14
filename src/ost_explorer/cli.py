@@ -123,35 +123,46 @@ def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path |
     if dedupe:
         from ost_explorer.engine.scanner import dedupe_findings
         all_findings = dedupe_findings(all_findings)
-    if output and fmt == "json":
-        export_json([], all_findings, output)
-        click.echo(f"Findings exported to {output}")
-    elif output and fmt == "csv":
-        export_csv([], all_findings, output)
-        click.echo(f"Findings exported to {output}")
+    import re as _re
+    _blank_collapse = _re.compile(r"\n\s*\n+")
+
+    def _format_finding_text(f) -> str:
+        lines = []
+        lines.append("-" * 78)
+        lines.append(f"[{f.severity.name}] {f.rule_name}: {f.matched_text}")
+        lines.append(f"  Subject: {f.message_subject}")
+        lines.append(f"  From:    {f.message_sender}")
+        if f.message_recipients_to:
+            lines.append(f"  To:      {', '.join(f.message_recipients_to)}")
+        if f.message_recipients_cc:
+            lines.append(f"  Cc:      {', '.join(f.message_recipients_cc)}")
+        lines.append(f"  Date:    {f.message_date}")
+        lines.append(f"  Folder:  {f.folder_path}")
+        if f.context:
+            ctx = _blank_collapse.sub("\n", f.context.strip())
+            lines.append(f"  Context:")
+            for line in ctx.splitlines():
+                stripped = line.strip()
+                if stripped:
+                    lines.append(f"    {stripped}")
+        return "\n".join(lines)
+
+    if output:
+        if fmt == "json":
+            export_json([], all_findings, output)
+        elif fmt == "csv":
+            export_csv([], all_findings, output)
+        else:  # text
+            with open(output, "w") as fh:
+                for f in all_findings:
+                    fh.write(_format_finding_text(f))
+                    fh.write("\n")
+                fh.write(f"\nTotal findings: {len(all_findings)}\n")
+        click.echo(f"Findings ({len(all_findings)}) exported to {output}")
     else:
-        import re as _re
-        _blank_collapse = _re.compile(r"\n\s*\n+")
         for f in all_findings:
-            click.echo("-" * 78)
-            click.echo(f"[{f.severity.name}] {f.rule_name}: {f.matched_text}")
-            click.echo(f"  Subject: {f.message_subject}")
-            click.echo(f"  From:    {f.message_sender}")
-            if f.message_recipients_to:
-                click.echo(f"  To:      {', '.join(f.message_recipients_to)}")
-            if f.message_recipients_cc:
-                click.echo(f"  Cc:      {', '.join(f.message_recipients_cc)}")
-            click.echo(f"  Date:    {f.message_date}")
-            click.echo(f"  Folder:  {f.folder_path}")
-            if f.context:
-                # Collapse runs of blank lines, trim each line, drop empties
-                ctx = _blank_collapse.sub("\n", f.context.strip())
-                click.echo(f"  Context:")
-                for line in ctx.splitlines():
-                    stripped = line.strip()
-                    if stripped:
-                        click.echo(f"    {stripped}")
-    click.echo(f"\nTotal findings: {len(all_findings)}")
+            click.echo(_format_finding_text(f))
+        click.echo(f"\nTotal findings: {len(all_findings)}")
     sys.exit(1 if all_findings else 0)
 
 @cli.command()
