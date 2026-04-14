@@ -1,24 +1,101 @@
-# ost_explorer default detection rules
-# Comprehensive ruleset for pentest / forensic OST/PST mailbox analysis.
-# All regex patterns use YAML single-quoted strings to avoid YAML escape issues.
+# =============================================================================
+# ost_explorer — Built-in Detection Rules
+# =============================================================================
+# CRITICAL rules are focused on lateral-movement credentials only. Running
+# `ost_explorer scan <file> --severity critical` surfaces real creds without
+# noise from phone numbers, credit cards, signature URLs, etc.
+#
+# HIGH/MEDIUM/LOW rules cover broader sensitive data (PII, network info,
+# file names). Use `--severity high` or lower for fuller triage.
+# =============================================================================
 
-# ─────────────────────────────────────────────────────────────
-# CREDENTIALS & SECRETS
-# ─────────────────────────────────────────────────────────────
+# =============================================================================
+# CRITICAL — credentials / secrets useful for lateral movement
+# =============================================================================
 
-- name: password_plain
-  pattern: '(?:password|passwd|pwd|pass)\s*[:=]\s*\S+'
+# --- Credential disclosure language ---
+
+- name: password_colon
+  pattern: '(?i)\bpassword\s*[:=]\s*\S+'
   severity: critical
-  note: "Plain-text password assignment detected"
+  note: "password: VALUE"
 
-- name: credentials_keyword
-  find_any:
-    - "credentials:"
-    - "login:"
-    - "username:"
-    - "auth_token"
+- name: pass_colon
+  pattern: '(?i)\bpass\s*[:=]\s*\S{4,}'
+  severity: critical
+  note: "pass: VALUE (4+ chars)"
+
+- name: pwd_colon
+  pattern: '(?i)\bpwd\s*[:=]\s*\S+'
+  severity: critical
+  note: "pwd: VALUE"
+
+- name: password_is
+  pattern: '(?i)\bpassword\s+is\s+\S+'
+  severity: critical
+  note: "password is VALUE"
+
+- name: pass_is
+  pattern: '(?i)\bpass\s+is\s+\S{4,}'
+  severity: critical
+  note: "pass is VALUE"
+
+- name: login_is
+  pattern: '(?i)\blogin\s+is\s*[:=]?\s*\S+'
+  severity: critical
+  note: "login is VALUE"
+
+- name: login_colon
+  pattern: '(?i)\blogin\s*[:=]\s*\S+'
   severity: high
-  note: "Credential keyword found"
+  note: "login: VALUE"
+
+- name: creds_colon
+  pattern: '(?i)\bcreds\s*[:=]\s*\S+'
+  severity: critical
+  note: "creds: VALUE"
+
+- name: credentials_colon
+  pattern: '(?i)\bcredentials\s*[:=]\s*\S+'
+  severity: critical
+  note: "credentials: VALUE"
+
+- name: username_and_password
+  pattern: '(?i)\b(?:username|user|uid)\s*[:=]\s*\S+.{0,80}?(?:password|pwd|pass)\s*[:=]\s*\S+'
+  severity: critical
+  note: "username+password pair"
+
+- name: temp_password
+  pattern: '(?i)\b(?:temporary|temp|initial|default|one-time)\s+password\s*[:=]?\s*\S+'
+  severity: critical
+  note: "Temporary/initial password"
+
+- name: new_password_is
+  pattern: '(?i)\bnew\s+password\s+(?:is|=|:)\s*\S+'
+  severity: critical
+  note: "new password is VALUE"
+
+- name: your_password_is
+  pattern: '(?i)\byour\s+password\s+(?:is|=|:)\s*\S+'
+  severity: critical
+  note: "your password is VALUE"
+
+- name: reset_password_to
+  pattern: '(?i)\breset\s+(?:your\s+)?password\s+to\s+\S+'
+  severity: critical
+  note: "reset password to VALUE"
+
+- name: vpn_password
+  pattern: '(?i)(?:vpn|openvpn|wireguard|ipsec)\s+(?:password|pass|pwd|key)\s*[:=]\s*\S+'
+  severity: critical
+  note: "VPN password/key"
+
+- name: wifi_password_value
+  pattern: '(?i)(?:wifi|wi-fi|wireless|wlan|ssid)\s+(?:password|key|pass|psk)\s*[:=]\s*\S+'
+  severity: critical
+  note: "WiFi password"
+
+# --- Structured API keys (very low false positive) ---
 
 - name: aws_access_key
   pattern: 'AKIA[0-9A-Z]{16}'
@@ -30,23 +107,23 @@
   severity: critical
   note: "AWS Secret Access Key"
 
-- name: azure_key
+- name: azure_account_key
   pattern: '(?:AccountKey|azure[_-]?(?:storage|key|secret))\s*[:=]\s*[A-Za-z0-9+/=]{44,}'
   severity: critical
-  note: "Azure storage or service key"
+  note: "Azure storage/service key"
 
-- name: gcp_service_key
+- name: gcp_service_account
   find_any:
     - '"type": "service_account"'
-    - "private_key_id"
-    - "client_x509_cert_url"
+    - 'private_key_id'
+    - 'client_x509_cert_url'
   severity: critical
-  note: "GCP service account key material"
+  note: "GCP service account key"
 
 - name: github_token
   pattern: 'gh[ps]_[A-Za-z0-9_]{36,}'
   severity: critical
-  note: "GitHub personal access or server-to-server token"
+  note: "GitHub personal access token"
 
 - name: gitlab_token
   pattern: 'glpat-[A-Za-z0-9_\-]{20,}'
@@ -61,17 +138,81 @@
 - name: stripe_key
   pattern: '(?:sk|pk)_(?:live|test)_[A-Za-z0-9]{24,}'
   severity: critical
-  note: "Stripe API key (live or test)"
-
-- name: twilio_key
-  pattern: 'SK[0-9a-fA-F]{32}'
-  severity: high
-  note: "Twilio API key SID"
+  note: "Stripe API key"
 
 - name: sendgrid_key
   pattern: 'SG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}'
   severity: critical
   note: "SendGrid API key"
+
+# --- Private keys ---
+
+- name: private_key_pem
+  find_any:
+    - '-----BEGIN RSA PRIVATE KEY-----'
+    - '-----BEGIN PRIVATE KEY-----'
+    - '-----BEGIN EC PRIVATE KEY-----'
+    - '-----BEGIN OPENSSH PRIVATE KEY-----'
+    - '-----BEGIN DSA PRIVATE KEY-----'
+  severity: critical
+  note: "Private key (PEM)"
+
+- name: pgp_private_key
+  find: '-----BEGIN PGP PRIVATE KEY BLOCK-----'
+  severity: critical
+  note: "PGP private key"
+
+# --- Connection strings WITH embedded credentials ---
+
+- name: jdbc_with_password
+  pattern: 'jdbc:[a-z]+://[^\s]*(?:password|pwd)=[^\s;&]+'
+  severity: critical
+  note: "JDBC with embedded password"
+
+- name: mongodb_with_creds
+  pattern: 'mongodb(?:\+srv)?://[^:\s]+:[^@\s]+@[^\s]+'
+  severity: critical
+  note: "MongoDB URI with creds"
+
+- name: postgres_with_creds
+  pattern: 'postgres(?:ql)?://[^:\s]+:[^@\s]+@[^\s]+'
+  severity: critical
+  note: "PostgreSQL URI with creds"
+
+- name: mysql_with_creds
+  pattern: 'mysql://[^:\s]+:[^@\s]+@[^\s]+'
+  severity: critical
+  note: "MySQL URI with creds"
+
+- name: redis_with_auth
+  pattern: 'redis://[^:\s]+:[^@\s]+@[^\s]+'
+  severity: critical
+  note: "Redis URI with auth"
+
+# --- Password database files ---
+
+- name: keepass_database
+  find_any:
+    - '.kdbx'
+    - '.kdb'
+  severity: critical
+  note: "KeePass database file"
+
+- name: onepassword_vault
+  find_any:
+    - '.1pif'
+    - '.agilekeychain'
+  severity: critical
+  note: "1Password vault export"
+
+# =============================================================================
+# HIGH — related creds / tokens / PII / sensitive file names
+# =============================================================================
+
+- name: twilio_key
+  pattern: 'SK[0-9a-fA-F]{32}'
+  severity: high
+  note: "Twilio API key"
 
 - name: mailgun_key
   pattern: 'key-[A-Za-z0-9]{32}'
@@ -81,208 +222,284 @@
 - name: jwt_token
   pattern: 'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'
   severity: high
-  note: "JSON Web Token (JWT)"
-
-- name: private_key_pem
-  find_any:
-    - "-----BEGIN RSA PRIVATE KEY-----"
-    - "-----BEGIN PRIVATE KEY-----"
-    - "-----BEGIN EC PRIVATE KEY-----"
-    - "-----BEGIN OPENSSH PRIVATE KEY-----"
-    - "-----BEGIN DSA PRIVATE KEY-----"
-  severity: critical
-  note: "PEM-encoded private key block"
-
-- name: pgp_private_key
-  find: "-----BEGIN PGP PRIVATE KEY BLOCK-----"
-  severity: critical
-  note: "PGP private key block"
-
-- name: ssh_private_key
-  find: "-----BEGIN OPENSSH PRIVATE KEY-----"
-  severity: critical
-  note: "OpenSSH private key block"
-
-- name: connection_string_jdbc
-  pattern: 'jdbc:[a-z]+://[^\s]+'
-  severity: high
-  note: "JDBC database connection string"
-
-- name: connection_string_mongodb
-  pattern: 'mongodb(?:\+srv)?://[^\s]+'
-  severity: high
-  note: "MongoDB connection string"
-
-- name: connection_string_redis
-  pattern: 'redis://[^\s]+'
-  severity: high
-  note: "Redis connection string"
-
-- name: connection_string_postgres
-  pattern: 'postgres(?:ql)?://[^\s]+'
-  severity: high
-  note: "PostgreSQL connection string"
-
-- name: connection_string_mysql
-  pattern: 'mysql://[^\s]+'
-  severity: high
-  note: "MySQL connection string"
-
-- name: connection_string_odbc
-  pattern: '(?:DSN|Driver)\s*=\s*[^;]+;.*(?:Uid|User)\s*=\s*[^;]+'
-  severity: high
-  note: "ODBC connection string with credentials"
-
-- name: basic_auth_url
-  pattern: 'https?://[^:]+:[^@]+@[^\s]+'
-  severity: critical
-  note: "URL containing embedded Basic Auth credentials"
+  note: "JSON Web Token"
 
 - name: bearer_token
   pattern: '(?:Bearer|Authorization)\s+[A-Za-z0-9_\-.~+/]+=*'
   severity: high
-  note: "Bearer / Authorization token"
+  note: "Bearer token"
 
 - name: oauth_token
   pattern: '(?:access_token|refresh_token|oauth_token)\s*[:=]\s*[A-Za-z0-9_\-.]{10,}'
   severity: high
-  note: "OAuth access or refresh token"
+  note: "OAuth token"
+
+- name: connection_string_jdbc
+  pattern: 'jdbc:[a-z]+://[^\s]+'
+  severity: high
+  note: "JDBC connection string"
+
+- name: connection_string_mongodb
+  pattern: 'mongodb(?:\+srv)?://[^\s]+'
+  severity: high
+  note: "MongoDB URI"
+
+- name: connection_string_redis
+  pattern: 'redis://[^\s]+'
+  severity: high
+  note: "Redis URI"
+
+- name: connection_string_postgres
+  pattern: 'postgres(?:ql)?://[^\s]+'
+  severity: high
+  note: "PostgreSQL URI"
+
+- name: connection_string_mysql
+  pattern: 'mysql://[^\s]+'
+  severity: high
+  note: "MySQL URI"
+
+- name: keepass_reference
+  find_any:
+    - 'KeePass'
+    - 'keepass'
+  severity: high
+  note: "KeePass reference"
+
+- name: credential_issuance
+  find_any:
+    - 'temporary password'
+    - 'temp password'
+    - 'one-time code'
+    - 'reset link'
+    - 'your new password'
+    - 'initial password'
+    - 'default password'
+  severity: high
+  note: "Credential issuance language"
+
+- name: credential_exchange
+  find_any:
+    - 'here are the credentials'
+    - 'here are the creds'
+    - 'here is the password'
+    - 'as requested, the password'
+    - 'login details below'
+    - 'access details'
+    - 'attached are the credentials'
+  severity: high
+  note: "Credential exchange language"
+
+- name: sensitive_attachment_context
+  find_any:
+    - 'see attached password'
+    - 'attached is the key'
+    - 'attached config'
+    - 'attached credentials'
+    - 'find attached the'
+  severity: high
+  note: "Sensitive attachment language"
+
+- name: ssn
+  pattern: '\b\d{3}-\d{2}-\d{4}\b'
+  severity: high
+  note: "SSN format"
+
+- name: credit_card_visa
+  pattern: '\b4\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
+  severity: high
+  note: "Visa card number"
+
+- name: credit_card_mastercard
+  pattern: '\b5[1-5]\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
+  severity: high
+  note: "Mastercard number"
+
+- name: credit_card_amex
+  pattern: '\b3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5}\b'
+  severity: high
+  note: "Amex card number"
+
+- name: bank_routing
+  pattern: '(?:routing|aba|transit)\s*(?:number|#|no\.?)\s*[:=]?\s*\d{9}'
+  severity: high
+  note: "Bank routing number"
+
+- name: bank_account
+  pattern: '(?:account|acct)\s*(?:number|#|no\.?)\s*[:=]?\s*\d{8,17}'
+  severity: high
+  note: "Bank account number"
+
+- name: passport_us
+  pattern: '(?:passport)\s*(?:number|#|no\.?)\s*[:=]?\s*[A-Z]?\d{8,9}'
+  severity: high
+  note: "Passport number"
+
+- name: drivers_license
+  pattern: '(?:driver''?s?\s*(?:license|licence|lic))\s*(?:number|#|no\.?)\s*[:=]?\s*[A-Z0-9]{5,15}'
+  severity: high
+  note: "Driver's license"
+
+- name: dob_pattern
+  pattern: '(?:date\s*of\s*birth|DOB|born|birthday)\s*[:=]?\s*\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}'
+  severity: high
+  note: "Date of birth"
+
+- name: private_key_file
+  find_any:
+    - '.pem'
+    - '.key'
+    - '.ppk'
+    - '.pfx'
+    - '.p12'
+  severity: high
+  note: "Private key file"
+
+- name: config_file
+  find_any:
+    - '.env'
+    - '.htpasswd'
+    - 'wp-config.php'
+    - 'web.config'
+    - 'appsettings.json'
+  severity: high
+  note: "Config file"
+
+- name: database_dump
+  find_any:
+    - '.sql'
+    - '.bak'
+    - '.dump'
+    - '.sqlite'
+    - '.mdb'
+  severity: high
+  note: "Database dump/backup"
+
+- name: vpn_config
+  find_any:
+    - 'vpn gateway'
+    - 'vpn server'
+    - 'openvpn'
+    - '.ovpn'
+    - 'ipsec'
+    - 'wireguard'
+  severity: high
+  note: "VPN reference"
+
+# =============================================================================
+# MEDIUM — context / infrastructure
+# =============================================================================
+
+- name: basic_auth_url
+  pattern: 'https?://[^:\s]+:[^@\s]+@[^\s]+'
+  severity: medium
+  note: "Basic auth URL (often in signatures/help links)"
 
 - name: session_id
   pattern: '(?:session_id|sessionid|PHPSESSID|JSESSIONID|ASP\.NET_SessionId)\s*[:=]\s*[A-Za-z0-9_\-]{10,}'
   severity: medium
-  note: "Web session identifier"
-
-- name: keepass_reference
-  find_any:
-    - ".kdbx"
-    - "KeePass"
-    - "keepass"
-  severity: high
-  note: "Reference to KeePass password database"
+  note: "Session ID"
 
 - name: lastpass_reference
   find_any:
-    - "LastPass"
-    - "lastpass"
+    - 'LastPass'
+    - 'lastpass'
   severity: medium
-  note: "Reference to LastPass password manager"
+  note: "LastPass reference"
 
 - name: onepassword_reference
   find_any:
-    - "1Password"
-    - ".1pif"
+    - '1Password'
   severity: medium
-  note: "Reference to 1Password password manager"
-
-# ─────────────────────────────────────────────────────────────
-# NETWORK & INFRASTRUCTURE
-# ─────────────────────────────────────────────────────────────
+  note: "1Password reference"
 
 - name: internal_ip_rfc1918
   pattern: '(?:^|[\s,;(])(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(?:[\s,;):]|$)'
   severity: medium
-  note: "RFC-1918 private IP address"
+  note: "Internal IP (RFC1918)"
 
 - name: unc_path
   pattern: '\\\\[A-Za-z0-9_.\-]+\\[A-Za-z0-9_.\-\$]+'
   severity: medium
   note: "UNC network path"
 
-- name: vpn_config
-  find_any:
-    - "vpn gateway"
-    - "vpn server"
-    - "openvpn"
-    - ".ovpn"
-    - "ipsec"
-    - "wireguard"
-  severity: high
-  note: "VPN configuration details"
-
 - name: rdp_connection
   find_any:
-    - "mstsc"
-    - ".rdp"
-    - "remote desktop"
-    - "rdp://"
-    - "port 3389"
+    - 'mstsc'
+    - '.rdp'
+    - 'remote desktop'
+    - 'rdp://'
+    - 'port 3389'
   severity: medium
-  note: "Remote Desktop Protocol reference"
+  note: "RDP reference"
 
 - name: ssh_connection
   pattern: 'ssh\s+(?:-[A-Za-z]\s+)*[A-Za-z0-9_.@\-]+(?:\s+-p\s+\d+)?'
   severity: medium
-  note: "SSH connection command"
-
-- name: wifi_password
-  pattern: '(?:wifi|wi-fi|wireless|wlan|ssid)\s*(?:password|key|pass|psk)\s*[:=]\s*\S+'
-  severity: high
-  note: "Wi-Fi password or PSK"
-
-- name: dns_record
-  find_any:
-    - "A record"
-    - "CNAME record"
-    - "MX record"
-    - "TXT record"
-    - "NS record"
-  severity: low
-  note: "DNS record reference"
+  note: "SSH command"
 
 - name: firewall_rule
   find_any:
-    - "iptables"
-    - "firewall rule"
-    - "ufw allow"
-    - "netsh advfirewall"
-    - "security group"
+    - 'iptables'
+    - 'firewall rule'
+    - 'ufw allow'
+    - 'netsh advfirewall'
+    - 'security group'
   severity: medium
-  note: "Firewall or security group rule"
+  note: "Firewall rule"
 
-# ─────────────────────────────────────────────────────────────
-# PII & COMPLIANCE
-# ─────────────────────────────────────────────────────────────
+- name: confidential_marking
+  find_any:
+    - 'do not share'
+    - 'do not distribute'
+    - 'confidential'
+    - 'internal only'
+    - 'eyes only'
+    - 'restricted'
+    - 'proprietary'
+    - 'not for external'
+  severity: medium
+  note: "Confidentiality marking"
 
-- name: ssn
-  pattern: '\b\d{3}-\d{2}-\d{4}\b'
-  severity: critical
-  note: "US Social Security Number"
+- name: wire_transfer
+  find_any:
+    - 'wire transfer'
+    - 'wire instructions'
+    - 'bank details'
+    - 'swift code'
+    - 'IBAN'
+  severity: medium
+  note: "Wire transfer / banking"
 
-- name: credit_card_visa
-  pattern: '\b4\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
-  severity: critical
-  note: "Visa credit card number"
+- name: script_file
+  find_any:
+    - '.ps1'
+    - '.bat'
+    - '.cmd'
+    - '.sh'
+    - '.bash'
+  severity: medium
+  note: "Script file"
 
-- name: credit_card_mastercard
-  pattern: '\b5[1-5]\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
-  severity: critical
-  note: "Mastercard credit card number"
+- name: macro_document
+  find_any:
+    - '.xlsm'
+    - '.docm'
+    - '.pptm'
+  severity: medium
+  note: "Office doc with macros"
 
-- name: credit_card_amex
-  pattern: '\b3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5}\b'
-  severity: critical
-  note: "American Express credit card number"
+- name: certificate_file
+  find_any:
+    - '.crt'
+    - '.cer'
+    - '.der'
+  severity: medium
+  note: "Certificate file"
 
-- name: bank_routing
-  pattern: '(?:routing|aba|transit)\s*(?:number|#|no\.?)\s*[:=]?\s*\d{9}'
-  severity: critical
-  note: "Bank routing / ABA number"
-
-- name: bank_account
-  pattern: '(?:account|acct)\s*(?:number|#|no\.?)\s*[:=]?\s*\d{8,17}'
-  severity: critical
-  note: "Bank account number"
-
-- name: passport_us
-  pattern: '(?:passport)\s*(?:number|#|no\.?)\s*[:=]?\s*[A-Z]?\d{8,9}'
-  severity: critical
-  note: "US passport number"
-
-- name: drivers_license
-  pattern: "(?:driver'?s?\\s*(?:license|licence|lic))\\s*(?:number|#|no\\.?)\\s*[:=]?\\s*[A-Z0-9]{5,15}"
-  severity: high
-  note: "Driver's license number"
+# =============================================================================
+# LOW — noise / reference only
+# =============================================================================
 
 - name: phone_us
   pattern: '(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}'
@@ -292,150 +509,24 @@
 - name: phone_international
   pattern: '\+\d{1,3}[\s.-]?\d{4,14}'
   severity: low
-  note: "International phone number"
+  note: "International phone"
 
-- name: dob_pattern
-  pattern: '(?:date\s*of\s*birth|DOB|born|birthday)\s*[:=]?\s*\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}'
-  severity: high
-  note: "Date of birth"
-
-# ─────────────────────────────────────────────────────────────
-# SENSITIVE FILE TYPES
-# ─────────────────────────────────────────────────────────────
-
-- name: private_key_file
+- name: dns_record
   find_any:
-    - ".pem"
-    - ".key"
-    - ".ppk"
-    - ".pfx"
-    - ".p12"
-  severity: high
-  note: "Reference to private key or certificate file"
-
-- name: password_database_file
-  find_any:
-    - ".kdbx"
-    - ".kdb"
-    - ".1pif"
-    - ".agilekeychain"
-  severity: critical
-  note: "Password database file"
-
-- name: config_file
-  find_any:
-    - ".env"
-    - ".htpasswd"
-    - "wp-config.php"
-    - "web.config"
-    - "appsettings.json"
-  severity: high
-  note: "Sensitive configuration file reference"
-
-- name: script_file
-  find_any:
-    - ".ps1"
-    - ".bat"
-    - ".cmd"
-    - ".sh"
-    - ".bash"
-  severity: medium
-  note: "Script file reference"
-
-- name: macro_document
-  find_any:
-    - ".xlsm"
-    - ".docm"
-    - ".pptm"
-  severity: medium
-  note: "Office document with macros"
+    - 'A record'
+    - 'CNAME record'
+    - 'MX record'
+    - 'TXT record'
+    - 'NS record'
+  severity: low
+  note: "DNS record reference"
 
 - name: archive_file
   find_any:
-    - ".zip"
-    - ".7z"
-    - ".rar"
-    - ".tar.gz"
-    - ".tgz"
+    - '.zip'
+    - '.7z'
+    - '.rar'
+    - '.tar.gz'
+    - '.tgz'
   severity: low
-  note: "Archive file reference"
-
-- name: certificate_file
-  find_any:
-    - ".crt"
-    - ".cer"
-    - ".der"
-  severity: medium
-  note: "Certificate file reference"
-
-- name: database_dump
-  find_any:
-    - ".sql"
-    - ".bak"
-    - ".dump"
-    - ".sqlite"
-    - ".mdb"
-  severity: high
-  note: "Database dump or backup file"
-
-# ─────────────────────────────────────────────────────────────
-# CONTEXTUAL PATTERNS
-# ─────────────────────────────────────────────────────────────
-
-- name: confidential_marking
-  find_any:
-    - "do not share"
-    - "do not distribute"
-    - "confidential"
-    - "internal only"
-    - "eyes only"
-    - "restricted"
-    - "proprietary"
-    - "not for external"
-  severity: medium
-  note: "Document or message marked as confidential / restricted"
-
-- name: credential_issuance
-  find_any:
-    - "temporary password"
-    - "temp password"
-    - "one-time code"
-    - "reset link"
-    - "your new password"
-    - "initial password"
-    - "default password"
-  severity: high
-  note: "Credential issuance or reset message"
-
-- name: credential_exchange
-  find_any:
-    - "here are the credentials"
-    - "here are the creds"
-    - "here is the password"
-    - "as requested, the password"
-    - "login details below"
-    - "access details"
-    - "attached are the credentials"
-  severity: high
-  note: "Credential exchange in message body"
-
-- name: wire_transfer
-  find_any:
-    - "wire transfer"
-    - "wire instructions"
-    - "bank details"
-    - "routing number"
-    - "swift code"
-    - "IBAN"
-  severity: high
-  note: "Wire transfer or banking instruction"
-
-- name: sensitive_attachment_context
-  find_any:
-    - "see attached password"
-    - "attached is the key"
-    - "attached config"
-    - "attached credentials"
-    - "find attached the"
-  severity: high
-  note: "Sensitive content referenced in attachment context"
+  note: "Archive file (review manually)"

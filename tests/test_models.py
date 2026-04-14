@@ -113,7 +113,7 @@ def test_severity_ordering():
 
 def test_scan_finding_creation():
     finding = ScanFinding(
-        rule_name="password_plain",
+        rule_name="password_colon",
         severity=Severity.HIGH,
         matched_text="Password: Summer2025!",
         context="Username: jdoe\nPassword: Summer2025!\nLet me know",

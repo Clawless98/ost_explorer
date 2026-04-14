@@ -20,7 +20,7 @@ def test_scanner_detects_password():
     scanner = Scanner()
     msg = _make_message("Here is the password: Summer2025!")
     findings = scanner.scan_message(msg, folder_path="Inbox")
-    matching = [f for f in findings if f.rule_name == "password_plain"]
+    matching = [f for f in findings if f.rule_name == "password_colon"]
     assert len(matching) >= 1
     assert matching[0].severity == Severity.CRITICAL
 
@@ -78,7 +78,7 @@ def test_scanner_scans_attachment_names():
     att = Attachment(filename="secrets.kdbx", size=1024, mime_type="application/octet-stream", _extract_fn=None)
     msg = _make_message("See attached", attachments=[att])
     findings = scanner.scan_message(msg, folder_path="Inbox")
-    matching = [f for f in findings if f.rule_name == "password_database_file"]
+    matching = [f for f in findings if f.rule_name == "keepass_database"]
     assert len(matching) >= 1
 
 def test_scanner_with_custom_rules(tmp_rules_dir: Path):
@@ -117,7 +117,7 @@ def test_scanner_context_extraction():
     body = "Line 1\nLine 2\nPassword: Secret123\nLine 4\nLine 5"
     msg = _make_message(body)
     findings = scanner.scan_message(msg, folder_path="Inbox")
-    matching = [f for f in findings if f.rule_name == "password_plain"]
+    matching = [f for f in findings if f.rule_name == "password_colon"]
     assert len(matching) >= 1
     assert "Password: Secret123" in matching[0].context
 

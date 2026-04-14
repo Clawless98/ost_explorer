@@ -47,7 +47,7 @@ def test_full_scan_pipeline(tmp_path: Path):
     scanner = Scanner()
     findings = scanner.scan_messages(messages, folder_path="Inbox")
     rule_names = {f.rule_name for f in findings}
-    assert "password_plain" in rule_names
+    assert "password_colon" in rule_names
     assert "aws_access_key" in rule_names
     lunch_findings = scanner.scan_message(messages[2], folder_path="Inbox")
     high_lunch = [f for f in lunch_findings if f.severity.value >= 3]
@@ -64,7 +64,7 @@ def test_full_export_pipeline(tmp_path: Path):
     data = json.loads(output.read_text())
     assert len(data["messages"]) == 3
     assert len(data["findings"]) > 0
-    assert any(f["rule_name"] == "password_plain" for f in data["findings"])
+    assert any(f["rule_name"] == "password_colon" for f in data["findings"])
 
 def test_search_then_scan(tmp_path: Path):
     _, _, messages = _build_mock_mailbox(tmp_path)
@@ -75,7 +75,7 @@ def test_search_then_scan(tmp_path: Path):
     assert results[0].subject == "RE: VPN credentials"
     scanner = Scanner()
     findings = scanner.scan_messages(results, folder_path="Inbox")
-    assert any(f.rule_name == "password_plain" for f in findings)
+    assert any(f.rule_name == "password_colon" for f in findings)
 
 def test_html_export(tmp_path: Path):
     _, _, messages = _build_mock_mailbox(tmp_path)
@@ -87,7 +87,7 @@ def test_html_export(tmp_path: Path):
     export_html(messages, findings, output, mailbox_name="test.pst")
     html = output.read_text()
     assert "test.pst" in html
-    assert "password_plain" in html
+    assert "password_colon" in html
     assert "CRITICAL" in html
 
 def test_attachment_extraction(tmp_path: Path):
