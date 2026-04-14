@@ -16,6 +16,28 @@ except ImportError:
     HAS_PYPFF = False
 
 
+_RTF_CONTROL_WORD = __import__("re").compile(r"\\[a-zA-Z]+-?\d*\s?")
+_RTF_CONTROL_SYMBOL = __import__("re").compile(r"\\[^a-zA-Z]")
+_RTF_BRACE = __import__("re").compile(r"[{}]")
+
+
+def _rtf_to_text(rtf: str) -> str:
+    """Strip RTF control words and braces to recover the plain text content.
+
+    Not a full RTF parser — just enough to let the scanner see the words.
+    Replaces \\par with newlines so paragraph breaks are preserved.
+    """
+    # Preserve paragraph breaks
+    rtf = rtf.replace("\\par", "\n").replace("\\line", "\n")
+    # Strip control words (e.g., \rtf1, \ansi, \fs22)
+    rtf = _RTF_CONTROL_WORD.sub("", rtf)
+    # Strip control symbols (e.g., \*, \')
+    rtf = _RTF_CONTROL_SYMBOL.sub("", rtf)
+    # Strip braces
+    rtf = _RTF_BRACE.sub("", rtf)
+    return rtf.strip()
+
+
 def _safe_attr(obj: Any, *names: str, default: Any = None) -> Any:
     """Try multiple attribute names to handle different pypff API versions.
 
@@ -131,10 +153,18 @@ class PypffParser(MailboxParser):
         # Get body — pypff may return bytes or str depending on version
         body_plain = _safe_attr(pff_msg, "plain_text_body", default="") or ""
         body_html = _safe_attr(pff_msg, "html_body", default="") or ""
+        body_rtf = _safe_attr(pff_msg, "rtf_body", default="") or ""
         if isinstance(body_plain, bytes):
             body_plain = body_plain.decode("utf-8", errors="replace")
         if isinstance(body_html, bytes):
             body_html = body_html.decode("utf-8", errors="replace")
+        if isinstance(body_rtf, bytes):
+            body_rtf = body_rtf.decode("utf-8", errors="replace")
+
+        # If plain and html are both empty (common for Notes), fall back to RTF
+        # with basic control-word stripping so scanner can see the content.
+        if not body_plain and not body_html and body_rtf:
+            body_plain = _rtf_to_text(body_rtf)
 
         return Message(
             subject=_safe_attr(pff_msg, "subject", default="(no subject)") or "(no subject)",

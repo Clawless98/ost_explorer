@@ -85,6 +85,16 @@
   severity: critical
   note: "reset password to VALUE"
 
+- name: password_on_next_line
+  pattern: '(?im)\bpassword\s*:?\s*\r?\n+\s*\S{4,}'
+  severity: critical
+  note: "'password' word, then value on following line (common in Notes/memos)"
+
+- name: admin_password_next_line
+  pattern: '(?im)\b(?:admin|root|domain|service|local|user)\s+password\b[^\n]*\r?\n+\s*\S{4,}'
+  severity: critical
+  note: "admin/root/domain password context, value on next line"
+
 - name: vpn_password
   pattern: '(?i)(?:vpn|openvpn|wireguard|ipsec)\s+(?:password|pass|pwd|key)\s*[:=]\s*\S+'
   severity: critical
