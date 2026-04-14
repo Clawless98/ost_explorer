@@ -53,9 +53,11 @@ def info(ctx: click.Context, file: Path) -> None:
 @click.option("--folder", type=str, default=None, help="Scope to specific folder")
 @click.option("--include-deleted/--no-deleted", default=True, help="Include recovered/deleted items")
 @click.option("--no-cache", is_flag=True, help="Skip SQLite cache")
+@click.option("--only-custom", is_flag=True, help="Use only custom rules, skip built-in defaults")
 @click.pass_context
 def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path | None,
-         fmt: str, severity: str, folder: str | None, include_deleted: bool, no_cache: bool) -> None:
+         fmt: str, severity: str, folder: str | None, include_deleted: bool, no_cache: bool,
+         only_custom: bool) -> None:
     """Scan a PST/OST file for credentials, secrets, and sensitive data."""
     from ost_explorer.engine.scanner import Scanner
     from ost_explorer.engine.export import export_json, export_csv
@@ -63,7 +65,13 @@ def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path |
     from ost_explorer.parser import open_mailbox
     severity_map = {"low": Severity.LOW, "medium": Severity.MEDIUM, "high": Severity.HIGH, "critical": Severity.CRITICAL}
     min_severity = severity_map[severity]
-    scanner = Scanner(custom_rule_paths=list(rules) if rules else None)
+    if only_custom and not rules:
+        click.echo("Error: --only-custom requires at least one --rules file", err=True)
+        sys.exit(2)
+    scanner = Scanner(
+        custom_rule_paths=list(rules) if rules else None,
+        use_defaults=not only_custom,
+    )
     mailbox, parser = open_mailbox(file)
     all_findings = []
     def _scan_folders(folders):

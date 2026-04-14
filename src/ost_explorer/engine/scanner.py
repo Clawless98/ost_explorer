@@ -14,9 +14,11 @@ _SEVERITY_MAP = {
 _CONTEXT_LINES = 2
 
 class Scanner:
-    def __init__(self, custom_rule_paths: list[Path] | None = None) -> None:
+    def __init__(self, custom_rule_paths: list[Path] | None = None,
+                 use_defaults: bool = True) -> None:
         self._rules: list[Rule] = []
-        self._load_default_rules()
+        if use_defaults:
+            self._load_default_rules()
         if custom_rule_paths:
             for path in custom_rule_paths:
                 self._rules.extend(load_rules_from_yaml(path))

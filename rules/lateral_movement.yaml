@@ -1,0 +1,217 @@
+# =============================================================================
+# Lateral Movement Rules — high-signal creds only
+# =============================================================================
+# Focused ruleset for finding credentials that enable lateral movement during
+# a pentest. Filters out noisy patterns (credit cards, SSNs, signature links)
+# and targets specific credential-disclosure language + structured API tokens.
+#
+# Usage:
+#   ost_explorer scan mailbox.pst --rules rules/lateral_movement.yaml --only-custom
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# CREDENTIAL DISCLOSURE LANGUAGE
+# Matches emails where someone is actually sharing a password/login
+# ---------------------------------------------------------------------------
+
+- name: password_colon
+  pattern: '(?i)\bpassword\s*[:=]\s*\S+'
+  severity: critical
+  note: "password: VALUE"
+
+- name: pass_colon
+  pattern: '(?i)\bpass\s*[:=]\s*\S{4,}'
+  severity: critical
+  note: "pass: VALUE (4+ chars to reduce noise)"
+
+- name: pwd_colon
+  pattern: '(?i)\bpwd\s*[:=]\s*\S+'
+  severity: critical
+  note: "pwd: VALUE or pwd=VALUE"
+
+- name: password_is
+  pattern: '(?i)\bpassword\s+is\s+\S+'
+  severity: critical
+  note: "password is VALUE"
+
+- name: pass_is
+  pattern: '(?i)\bpass\s+is\s+\S{4,}'
+  severity: critical
+  note: "pass is VALUE"
+
+- name: login_is
+  pattern: '(?i)\blogin\s+is\s*[:=]?\s*\S+'
+  severity: critical
+  note: "login is VALUE"
+
+- name: login_colon
+  pattern: '(?i)\blogin\s*[:=]\s*\S+'
+  severity: high
+  note: "login: VALUE"
+
+- name: creds_colon
+  pattern: '(?i)\bcreds\s*[:=]\s*\S+'
+  severity: critical
+  note: "creds: VALUE"
+
+- name: credentials_colon
+  pattern: '(?i)\bcredentials\s*[:=]\s*\S+'
+  severity: critical
+  note: "credentials: VALUE"
+
+- name: username_and_password
+  pattern: '(?i)\b(?:username|user|uid)\s*[:=]\s*\S+.{0,80}?(?:password|pwd|pass)\s*[:=]\s*\S+'
+  severity: critical
+  note: "username+password pair in same block"
+
+- name: temp_password
+  pattern: '(?i)\b(?:temporary|temp|initial|default|one-time)\s+password\s*[:=]?\s*\S+'
+  severity: critical
+  note: "Temporary/initial password disclosure"
+
+- name: new_password_is
+  pattern: '(?i)\bnew\s+password\s+(?:is|=|:)\s*\S+'
+  severity: critical
+  note: "new password is VALUE"
+
+- name: your_password_is
+  pattern: '(?i)\byour\s+password\s+(?:is|=|:)\s*\S+'
+  severity: critical
+  note: "your password is VALUE"
+
+- name: reset_password_to
+  pattern: '(?i)\breset\s+(?:your\s+)?password\s+to\s+\S+'
+  severity: critical
+  note: "reset password to VALUE"
+
+# ---------------------------------------------------------------------------
+# STRUCTURED API KEYS & TOKENS (very low false-positive rate)
+# ---------------------------------------------------------------------------
+
+- name: aws_access_key
+  pattern: 'AKIA[0-9A-Z]{16}'
+  severity: critical
+  note: "AWS Access Key ID"
+
+- name: aws_secret_key
+  pattern: '(?:aws_secret_access_key|secret_key)\s*[:=]\s*[A-Za-z0-9/+=]{40}'
+  severity: critical
+  note: "AWS Secret Access Key"
+
+- name: azure_account_key
+  pattern: '(?:AccountKey|azure[_-]?(?:storage|key|secret))\s*[:=]\s*[A-Za-z0-9+/=]{44,}'
+  severity: critical
+  note: "Azure storage/service key"
+
+- name: gcp_service_account
+  find_any:
+    - '"type": "service_account"'
+    - 'private_key_id'
+    - 'client_x509_cert_url'
+  severity: critical
+  note: "GCP service account key"
+
+- name: github_token
+  pattern: 'gh[ps]_[A-Za-z0-9_]{36,}'
+  severity: critical
+  note: "GitHub personal access/service token"
+
+- name: gitlab_token
+  pattern: 'glpat-[A-Za-z0-9_\-]{20,}'
+  severity: critical
+  note: "GitLab personal access token"
+
+- name: slack_token
+  pattern: 'xox[baprs]-[A-Za-z0-9\-]{10,}'
+  severity: critical
+  note: "Slack API token"
+
+- name: stripe_key
+  pattern: '(?:sk|pk)_(?:live|test)_[A-Za-z0-9]{24,}'
+  severity: critical
+  note: "Stripe API key"
+
+- name: sendgrid_key
+  pattern: 'SG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}'
+  severity: critical
+  note: "SendGrid API key"
+
+# ---------------------------------------------------------------------------
+# PRIVATE KEYS
+# ---------------------------------------------------------------------------
+
+- name: private_key_pem
+  find_any:
+    - '-----BEGIN RSA PRIVATE KEY-----'
+    - '-----BEGIN PRIVATE KEY-----'
+    - '-----BEGIN EC PRIVATE KEY-----'
+    - '-----BEGIN OPENSSH PRIVATE KEY-----'
+    - '-----BEGIN DSA PRIVATE KEY-----'
+  severity: critical
+  note: "Private key in PEM format"
+
+- name: pgp_private_key
+  find: '-----BEGIN PGP PRIVATE KEY BLOCK-----'
+  severity: critical
+  note: "PGP private key block"
+
+# ---------------------------------------------------------------------------
+# CONNECTION STRINGS WITH EMBEDDED CREDS
+# ---------------------------------------------------------------------------
+
+- name: jdbc_with_password
+  pattern: 'jdbc:[a-z]+://[^\s]*(?:password|pwd)=[^\s;&]+'
+  severity: critical
+  note: "JDBC connection string with password"
+
+- name: mongodb_with_creds
+  pattern: 'mongodb(?:\+srv)?://[^:\s]+:[^@\s]+@[^\s]+'
+  severity: critical
+  note: "MongoDB URI with embedded creds"
+
+- name: postgres_with_creds
+  pattern: 'postgres(?:ql)?://[^:\s]+:[^@\s]+@[^\s]+'
+  severity: critical
+  note: "PostgreSQL URI with embedded creds"
+
+- name: mysql_with_creds
+  pattern: 'mysql://[^:\s]+:[^@\s]+@[^\s]+'
+  severity: critical
+  note: "MySQL URI with embedded creds"
+
+- name: redis_with_auth
+  pattern: 'redis://[^:\s]+:[^@\s]+@[^\s]+'
+  severity: critical
+  note: "Redis URI with embedded auth"
+
+# ---------------------------------------------------------------------------
+# PASSWORD DATABASE FILES (attachment names)
+# ---------------------------------------------------------------------------
+
+- name: keepass_database
+  find_any:
+    - '.kdbx'
+    - '.kdb'
+  severity: critical
+  note: "KeePass database file"
+
+- name: onepassword_vault
+  find_any:
+    - '.1pif'
+    - '.agilekeychain'
+  severity: critical
+  note: "1Password vault export"
+
+# ---------------------------------------------------------------------------
+# VPN / REMOTE ACCESS SPECIFIC
+# ---------------------------------------------------------------------------
+
+- name: vpn_password
+  pattern: '(?i)(?:vpn|openvpn|wireguard|ipsec)\s+(?:password|pass|pwd|key)\s*[:=]\s*\S+'
+  severity: critical
+  note: "VPN password/key"
+
+- name: wifi_password_value
+  pattern: '(?i)(?:wifi|wi-fi|wireless|wlan|ssid)\s+(?:password|key|pass|psk)\s*[:=]\s*\S+'
+  severity: critical
+  note: "WiFi password"
