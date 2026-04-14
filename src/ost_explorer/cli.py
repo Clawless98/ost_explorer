@@ -130,8 +130,12 @@ def scan(ctx: click.Context, file: Path, rules: tuple[Path, ...], output: Path |
         for f in all_findings:
             click.echo("=" * 78)
             click.echo(f"[{f.severity.name}] {f.rule_name}: {f.matched_text}")
-            click.echo(f"  Message: {f.message_subject}")
+            click.echo(f"  Subject: {f.message_subject}")
             click.echo(f"  From:    {f.message_sender}")
+            if f.message_recipients_to:
+                click.echo(f"  To:      {', '.join(f.message_recipients_to)}")
+            if f.message_recipients_cc:
+                click.echo(f"  Cc:      {', '.join(f.message_recipients_cc)}")
             click.echo(f"  Date:    {f.message_date}")
             click.echo(f"  Folder:  {f.folder_path}")
             if f.context:

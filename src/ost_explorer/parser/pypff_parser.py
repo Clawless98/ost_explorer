@@ -16,26 +16,7 @@ except ImportError:
     HAS_PYPFF = False
 
 
-_RTF_CONTROL_WORD = __import__("re").compile(r"\\[a-zA-Z]+-?\d*\s?")
-_RTF_CONTROL_SYMBOL = __import__("re").compile(r"\\[^a-zA-Z]")
-_RTF_BRACE = __import__("re").compile(r"[{}]")
-
-
-def _rtf_to_text(rtf: str) -> str:
-    """Strip RTF control words and braces to recover the plain text content.
-
-    Not a full RTF parser — just enough to let the scanner see the words.
-    Replaces \\par with newlines so paragraph breaks are preserved.
-    """
-    # Preserve paragraph breaks
-    rtf = rtf.replace("\\par", "\n").replace("\\line", "\n")
-    # Strip control words (e.g., \rtf1, \ansi, \fs22)
-    rtf = _RTF_CONTROL_WORD.sub("", rtf)
-    # Strip control symbols (e.g., \*, \')
-    rtf = _RTF_CONTROL_SYMBOL.sub("", rtf)
-    # Strip braces
-    rtf = _RTF_BRACE.sub("", rtf)
-    return rtf.strip()
+from ost_explorer.engine.body_extractor import rtf_to_text as _rtf_to_text
 
 
 def _safe_attr(obj: Any, *names: str, default: Any = None) -> Any:

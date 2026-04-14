@@ -86,3 +86,5 @@ class ScanFinding:
     message_sender: str
     message_date: datetime.datetime
     folder_path: str
+    message_recipients_to: list[str] = field(default_factory=list)
+    message_recipients_cc: list[str] = field(default_factory=list)

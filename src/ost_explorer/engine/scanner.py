@@ -38,21 +38,28 @@ class Scanner:
 
     def scan_message(self, message: Message, folder_path: str,
                      min_severity: Severity = Severity.LOW) -> list[ScanFinding]:
+        from ost_explorer.engine.body_extractor import strip_html
         findings: list[ScanFinding] = []
-        text = message.body_plain or ""
-        findings.extend(self._scan_text(text, message, folder_path, min_severity))
+        # Scan plain text body
+        findings.extend(self._scan_text(message.body_plain or "", message, folder_path, min_severity))
+        # Scan HTML body (stripped) — only if plain body was empty or if HTML
+        # has additional content (many modern emails are HTML-only)
+        if message.body_html:
+            html_text = strip_html(message.body_html)
+            # Skip if it duplicates the plain body
+            if html_text and html_text.strip() != (message.body_plain or "").strip():
+                findings.extend(self._scan_text(html_text, message, folder_path, min_severity))
+        # Scan subject
         findings.extend(self._scan_text(message.subject, message, folder_path, min_severity))
+        # Scan attachments
         for att in message.attachments:
-            # Scan the filename itself
             findings.extend(self._scan_text(att.filename, message, folder_path, min_severity))
-            # Scan the attachment content (text files, office docs, zips)
             if self._scan_attachments:
                 try:
                     from ost_explorer.engine.attachment_content import extract_text
                     content = extract_text(att)
                     if content:
                         att_findings = self._scan_text(content, message, folder_path, min_severity)
-                        # Tag findings with the attachment filename in folder path
                         for f in att_findings:
                             f.folder_path = f"{folder_path} → {att.filename}"
                         findings.extend(att_findings)
@@ -95,6 +102,8 @@ class Scanner:
                     matched_text=matched_text, context=context,
                     message_subject=message.subject, message_sender=message.sender,
                     message_date=message.date, folder_path=folder_path,
+                    message_recipients_to=list(message.recipients_to),
+                    message_recipients_cc=list(message.recipients_cc),
                 ))
         return findings
 

@@ -8,10 +8,10 @@ from __future__ import annotations
 import io
 import logging
 import zipfile
-from pathlib import PurePosixPath
 from typing import Optional
 from xml.etree import ElementTree as ET
 
+from ost_explorer.engine.body_extractor import rtf_to_text
 from ost_explorer.models import Attachment
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,19 @@ def extract_text(attachment: Attachment) -> str:
     if ext == ".zip":
         return _extract_zip_text(data, attachment.filename)
 
+    if ext == ".rtf":
+        try:
+            return rtf_to_text(_decode_text(data))
+        except Exception as e:
+            logger.warning("Failed to extract RTF from %s: %s", attachment.filename, e)
+            return ""
+
+    if ext == ".pdf":
+        return _extract_pdf_text(data, attachment.filename)
+
+    if ext == ".msg":
+        return _extract_msg_text(data, attachment.filename)
+
     if ext in _TEXT_EXTENSIONS:
         return _decode_text(data)
 
@@ -88,6 +101,59 @@ def extract_text(attachment: Attachment) -> str:
         return _decode_text(data)
 
     return ""
+
+
+def _extract_pdf_text(data: bytes, filename: str) -> str:
+    """Extract text from a PDF attachment using pypdf (if installed)."""
+    try:
+        import pypdf  # type: ignore
+    except ImportError:
+        logger.debug("pypdf not installed, skipping PDF %s", filename)
+        return ""
+    try:
+        reader = pypdf.PdfReader(io.BytesIO(data))
+        parts: list[str] = []
+        for page in reader.pages:
+            try:
+                parts.append(page.extract_text() or "")
+            except Exception:
+                continue
+        return "\n".join(p for p in parts if p)
+    except Exception as e:
+        logger.warning("Failed to extract PDF %s: %s", filename, e)
+        return ""
+
+
+def _extract_msg_text(data: bytes, filename: str) -> str:
+    """Extract text from an Outlook .msg attachment (via extract-msg if installed)."""
+    try:
+        import extract_msg  # type: ignore
+    except ImportError:
+        logger.debug("extract-msg not installed, skipping .msg %s", filename)
+        return ""
+    try:
+        msg = extract_msg.Message(io.BytesIO(data))
+        parts: list[str] = []
+        if msg.subject:
+            parts.append(f"Subject: {msg.subject}")
+        if msg.sender:
+            parts.append(f"From: {msg.sender}")
+        if msg.to:
+            parts.append(f"To: {msg.to}")
+        if msg.cc:
+            parts.append(f"Cc: {msg.cc}")
+        if msg.body:
+            parts.append(str(msg.body))
+        if getattr(msg, "htmlBody", None):
+            from ost_explorer.engine.body_extractor import strip_html
+            parts.append(strip_html(msg.htmlBody.decode("utf-8", errors="replace") if isinstance(msg.htmlBody, bytes) else msg.htmlBody))
+        if getattr(msg, "rtfBody", None):
+            rtf = msg.rtfBody.decode("utf-8", errors="replace") if isinstance(msg.rtfBody, bytes) else msg.rtfBody
+            parts.append(rtf_to_text(rtf))
+        return "\n\n".join(p for p in parts if p)
+    except Exception as e:
+        logger.warning("Failed to extract .msg %s: %s", filename, e)
+        return ""
 
 
 def _get_extension(filename: str) -> str:
